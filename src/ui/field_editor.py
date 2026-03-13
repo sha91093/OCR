@@ -70,6 +70,11 @@ except ImportError:
 MAX_CANVAS_W = 900
 MAX_CANVAS_H = 650
 
+# テンプレートプレビュー時の解像度 (DPI)
+# この値で PDF をラスタライズし、フィールド座標を記録する。
+# OCR処理時と異なる場合は ocr_processor.py 内で座標変換が行われる。
+PREVIEW_DPI = 150
+
 # 矩形の描画色
 RECT_COLOR_NORMAL   = "#2196F3"   # 通常の領域（青）
 RECT_COLOR_SELECTED = "#F44336"   # 選択中の領域（赤）
@@ -473,10 +478,11 @@ class FieldEditorDialog(tk.Toplevel):
 
         if self._pdf_doc is not None and _PYMUPDF_AVAILABLE:
             import fitz
-            # 解像度: 150 DPI（低スペックPC対応: 高すぎるとメモリ不足になる）
-            # 96 DPI = scale 1.0、150 DPIは約1.56倍
+            # PREVIEW_DPI で PDF をラスタライズする。
+            # PyMuPDF のベースDPIは 72 DPI なので scale = PREVIEW_DPI / 72。
+            _scale = PREVIEW_DPI / 72.0
             page = self._pdf_doc[page_num - 1]
-            mat = fitz.Matrix(1.56, 1.56)  # 150 DPI相当
+            mat = fitz.Matrix(_scale, _scale)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             self._page_images[page_num] = img
@@ -1076,16 +1082,17 @@ class FieldEditorDialog(tk.Toplevel):
             try:
                 for i, region in enumerate(self._regions):
                     field_data = {
-                        "id":          region.get("id"),
-                        "field_name":  region["field_name"],
-                        "field_label": region["field_label"],
-                        "page_number": region["page_number"],
-                        "x1":          region["x1"],
-                        "y1":          region["y1"],
-                        "x2":          region["x2"],
-                        "y2":          region["y2"],
-                        "field_type":  region.get("field_type", "text"),
-                        "order_index": i,
+                        "id":           region.get("id"),
+                        "field_name":   region["field_name"],
+                        "field_label":  region["field_label"],
+                        "page_number":  region["page_number"],
+                        "x1":           region["x1"],
+                        "y1":           region["y1"],
+                        "x2":           region["x2"],
+                        "y2":           region["y2"],
+                        "field_type":   region.get("field_type", "text"),
+                        "order_index":  i,
+                        "template_dpi": PREVIEW_DPI,
                     }
                     saved_id = self.db_manager.save_form_field(self.form_id, field_data)
                     region["id"] = saved_id  # 新規の場合はIDを更新

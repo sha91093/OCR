@@ -85,12 +85,13 @@ class DatabaseManager:
             field_name  TEXT    NOT NULL,           -- フィールド識別名 (英数字推奨)
             field_label TEXT    NOT NULL,           -- 表示ラベル (日本語可)
             page_number INTEGER NOT NULL DEFAULT 1, -- 対象ページ番号 (1始まり)
-            x1          REAL    NOT NULL DEFAULT 0, -- 領域左上X座標 (px)
-            y1          REAL    NOT NULL DEFAULT 0, -- 領域左上Y座標 (px)
-            x2          REAL    NOT NULL DEFAULT 0, -- 領域右下X座標 (px)
-            y2          REAL    NOT NULL DEFAULT 0, -- 領域右下Y座標 (px)
-            field_type  TEXT    NOT NULL DEFAULT 'text', -- フィールド種別 (text/number/date)
-            order_index INTEGER NOT NULL DEFAULT 0, -- CSV出力時の列順序
+            x1           REAL    NOT NULL DEFAULT 0, -- 領域左上X座標 (px)
+            y1           REAL    NOT NULL DEFAULT 0, -- 領域左上Y座標 (px)
+            x2           REAL    NOT NULL DEFAULT 0, -- 領域右下X座標 (px)
+            y2           REAL    NOT NULL DEFAULT 0, -- 領域右下Y座標 (px)
+            field_type   TEXT    NOT NULL DEFAULT 'text', -- フィールド種別 (text/number/date)
+            order_index  INTEGER NOT NULL DEFAULT 0, -- CSV出力時の列順序
+            template_dpi INTEGER NOT NULL DEFAULT 150, -- フィールド定義時のテンプレート解像度 (DPI)
             FOREIGN KEY (form_id) REFERENCES forms(id) ON DELETE CASCADE
         )
         """
@@ -132,6 +133,16 @@ class DatabaseManager:
             conn.execute(create_ocr_result_fields_sql)
             for idx_sql in create_indexes_sql:
                 conn.execute(idx_sql)
+            # 既存DBへのマイグレーション: template_dpi カラムが未追加の場合に追加する
+            existing_cols = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(form_fields)").fetchall()
+            }
+            if "template_dpi" not in existing_cols:
+                conn.execute(
+                    "ALTER TABLE form_fields ADD COLUMN template_dpi INTEGER NOT NULL DEFAULT 150"
+                )
+                logger.info("マイグレーション: form_fields.template_dpi カラムを追加しました")
             conn.commit()
 
         logger.info("データベースの初期化が完了しました")
@@ -278,7 +289,7 @@ class DatabaseManager:
             sql = """
             UPDATE form_fields
             SET field_name=?, field_label=?, page_number=?,
-                x1=?, y1=?, x2=?, y2=?, field_type=?, order_index=?
+                x1=?, y1=?, x2=?, y2=?, field_type=?, order_index=?, template_dpi=?
             WHERE id=? AND form_id=?
             """
             with self._get_connection() as conn:
@@ -292,6 +303,7 @@ class DatabaseManager:
                     field_data.get("y2", 0.0),
                     field_data.get("field_type", "text"),
                     field_data.get("order_index", 0),
+                    field_data.get("template_dpi", 150),
                     field_id,
                     form_id,
                 ))
@@ -302,8 +314,9 @@ class DatabaseManager:
             # 新規フィールドの挿入
             sql = """
             INSERT INTO form_fields
-                (form_id, field_name, field_label, page_number, x1, y1, x2, y2, field_type, order_index)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (form_id, field_name, field_label, page_number,
+                 x1, y1, x2, y2, field_type, order_index, template_dpi)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             with self._get_connection() as conn:
                 cursor = conn.execute(sql, (
@@ -317,6 +330,7 @@ class DatabaseManager:
                     field_data.get("y2", 0.0),
                     field_data.get("field_type", "text"),
                     field_data.get("order_index", 0),
+                    field_data.get("template_dpi", 150),
                 ))
                 conn.commit()
                 new_id = cursor.lastrowid

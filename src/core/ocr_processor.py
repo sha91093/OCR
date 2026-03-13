@@ -27,6 +27,7 @@ from typing import Any, Callable, Optional
 from .database import DatabaseManager
 from .form_manager import FormManager
 from .ocr_engine import OCREngine
+from src.utils.converters import scale_coords
 from .pdf_processor import PDFProcessor
 from .csv_exporter import CSVExporter
 
@@ -184,9 +185,10 @@ class OCRProcessor:
                 # 画像前処理
                 processed_image = self.pdf_processor.preprocess_image(image)
 
-                # OCR 一括認識
+                # フィールド座標を処理DPIにスケール変換して OCR 一括認識
+                scaled_fields = self._scale_fields_for_dpi(page_fields)
                 page_results = self.ocr_engine.recognize_regions(
-                    processed_image, page_fields
+                    processed_image, scaled_fields
                 )
 
                 # フィールドIDを認識結果に付加
@@ -417,3 +419,53 @@ class OCRProcessor:
             list[dict]: 様式データのリスト
         """
         return self.form_manager.list_forms()
+
+    # -------------------------------------------------------------------------
+    # 内部ユーティリティ
+    # -------------------------------------------------------------------------
+
+    def _scale_fields_for_dpi(
+        self, fields: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """
+        フィールド定義の座標を処理DPIにスケール変換して返す。
+
+        フィールド定義時 (field_editor) と OCR処理時 (pdf_processor) の DPI が
+        異なる場合、座標を比率変換することで正しい領域を認識できるようにする。
+
+        変換式:
+            scaled_coord = original_coord * (processing_dpi / template_dpi)
+
+        Args:
+            fields: フォームフィールド定義リスト（各 dict に template_dpi を含む）
+
+        Returns:
+            list[dict]: 座標をスケール変換したフィールドリスト（元のリストは変更しない）
+        """
+        processing_dpi = self.pdf_processor.dpi
+        scaled = []
+        for field in fields:
+            template_dpi = field.get("template_dpi", processing_dpi)
+            if template_dpi == processing_dpi:
+                scaled.append(field)
+                continue
+
+            x1, y1, x2, y2 = scale_coords(
+                int(field.get("x1", 0)),
+                int(field.get("y1", 0)),
+                int(field.get("x2", 0)),
+                int(field.get("y2", 0)),
+                src_dpi=template_dpi,
+                dst_dpi=processing_dpi,
+            )
+            scaled_field = dict(field)
+            scaled_field.update({"x1": x1, "y1": y1, "x2": x2, "y2": y2})
+            scaled.append(scaled_field)
+            logger.debug(
+                f"DPIスケール変換: {field['field_name']} "
+                f"{template_dpi}→{processing_dpi}DPI "
+                f"({field['x1']:.0f},{field['y1']:.0f})-({field['x2']:.0f},{field['y2']:.0f})"
+                f" → ({x1},{y1})-({x2},{y2})"
+            )
+
+        return scaled
