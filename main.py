@@ -280,8 +280,9 @@ def main() -> int:
     # ------------------------------------------------------------------
     setup_logging(debug=args.debug)
 
+    from config.settings import AppConfig
     logger.info("=" * 60)
-    logger.info("OCR申請書読み取りツール 起動開始")
+    logger.info(f"{AppConfig.NAME}  v{AppConfig.VERSION}  起動開始")
     logger.info(f"Python バージョン: {sys.version}")
     logger.info(f"デバッグモード: {args.debug}")
     logger.info(f"データベースパス: {args.db_path}")

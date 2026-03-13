@@ -27,6 +27,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from config.settings import AppConfig  # noqa: E402
+
 # 各フレームのインポート（未作成でも起動できるようtry/exceptで保護）
 try:
     from src.ui.form_management import FormManagementFrame
@@ -176,7 +178,7 @@ class MainWindow(tk.Tk):
 
     def _configure_window(self) -> None:
         """ウィンドウの基本設定（タイトル・サイズ・位置）を行う。"""
-        self.title("OCR申請書読み取りツール")
+        self.title(f"{AppConfig.NAME}  v{AppConfig.VERSION}")
 
         # ウィンドウサイズと最小サイズの設定
         self.geometry(f"{self.WINDOW_WIDTH}x{self.WINDOW_HEIGHT}")
@@ -363,6 +365,17 @@ class MainWindow(tk.Tk):
             text=db_status,
             font=("", 9),
             fg=db_color,
+            bg="#ecf0f1",
+            padx=8,
+            pady=2,
+        ).pack(side=tk.RIGHT)
+
+        # バージョン表示（DBインジケーターの左隣）
+        tk.Label(
+            statusbar_frame,
+            text=f"v{AppConfig.VERSION}",
+            font=("", 9),
+            fg="#7f8c8d",
             bg="#ecf0f1",
             padx=8,
             pady=2,
