@@ -2,6 +2,7 @@
 
 **作成者**: 渡辺 健二 (Kenji Watanabe) / 佐藤 愛子 (Aiko Sato)
 **作成日**: 2026-03-13
+**更新日**: 2026-03-13
 **対象環境**: LGWAN 接続 PC（インターネット非接続・Python 未インストール）
 
 ---
@@ -11,6 +12,18 @@
 本ツールは LGWAN 環境（役所内ネットワーク）での動作を前提としています。
 インターネット接続・Python インストールが不要な **スタンドアロン exe** として
 配布します。
+
+> **【重要】ndlocr-lite と ndlocr の違い**
+>
+> 本ツールで使用するのは **ndlocr-lite** です。
+> フル版の `ndlocr` はモデルサイズが大きく低スペックPC での動作が困難なため使用しません。
+>
+> | | ndlocr-lite | ndlocr (フル版) |
+> |--|--|--|
+> | pip パッケージ名 | `ndloccr` (ダブルc) | `ndlocr` |
+> | モデルサイズ | 数百 MB 程度 | 1〜数 GB |
+> | RAM 目安 | 4 GB で動作可 | 8 GB 以上推奨 |
+> | 本ツールでの使用 | ✅ 使用する | ❌ 使用しない |
 
 配布ファイルの構成:
 
@@ -24,8 +37,8 @@ ocr_shinseisho/                  ← このフォルダをまるごと配備
 │   │   ├── jpn_vert.traineddata ← 日本語縦書き認識モデル
 │   │   └── eng.traineddata      ← 英数字認識モデル
 │   └── *.dll
-├── models/                      ← ndlocr モデル（手順 3 で配置）
-│   └── ndlocr/
+├── models/                      ← ndlocr-lite モデル（手順 3 で配置）
+│   └── ndloccr/
 │       └── ...
 ├── config/                      ← アプリ設定
 └── _internal/                   ← Python ランタイム（自動）
@@ -71,10 +84,14 @@ Tesseract は `ocr_shinseisho\tesseract\` に同梱されており、
 
 ---
 
-## 手順 3: ndlocr モデルのオフライン配置（任意・高精度化）
+## 手順 3: ndlocr-lite モデルのオフライン配置（任意・高精度化）
 
-ndlocr を使用することで Tesseract より高精度の日本語 OCR が可能になります。
-ただしモデルファイルが大きいため（約 1〜3 GB）、USB 転送が必要です。
+ndlocr-lite を使用することで Tesseract より高精度の日本語 OCR が可能になります。
+モデルファイルは数百 MB 程度（フル版 ndlocr より大幅に小さい）のため、
+USB メモリで転送可能です。
+
+> **注意**: `pip install ndlocr-lite` や `pip install ndlocr` ではなく、
+> 必ず **`pip install ndloccr`**（ダブルc）を使用してください。
 
 ### 3-1. 中継 PC でのモデルダウンロード
 
@@ -82,9 +99,10 @@ ndlocr を使用することで Tesseract より高精度の日本語 OCR が可
 
 ```bat
 rem Python と pip が必要
-pip install ndlocr
+rem ※ ndloccr (ダブルc) が ndlocr-lite の pip パッケージ名
+pip install ndloccr
 
-rem ndlocr のモデルをダウンロード (初回のみ自動ダウンロードされる)
+rem ndlocr-lite のモデルをダウンロード (初回のみ自動ダウンロードされる)
 python -c "import ndloccr; ndloccr.download_models()"
 
 rem モデルの保存先を確認 (通常は %APPDATA%\ndloccr\models\ 以下)
@@ -105,11 +123,11 @@ python -c "import ndloccr; print(ndloccr.get_model_dir())"
 ### 3-3. LGWAN PC へのモデル転送
 
 ```
-[中継 PC]                          [USB メモリ]          [LGWAN PC]
-%APPDATA%\ndloccr\models\  →コピー→  ndlocr_models\  →コピー→  C:\Tools\ocr_shinseisho\models\ndlocr\
+[中継 PC]                          [USB メモリ]           [LGWAN PC]
+%APPDATA%\ndloccr\models\  →コピー→  ndloccr_models\  →コピー→  C:\Tools\ocr_shinseisho\models\ndloccr\
 ```
 
-> **転送先パス**: `ocr_shinseisho\models\ndlocr\`
+> **転送先パス**: `ocr_shinseisho\models\ndloccr\`
 > (フォルダが存在しない場合は作成してください)
 
 ### 3-4. spec ファイルの更新（再ビルド時）
@@ -118,9 +136,9 @@ python -c "import ndloccr; print(ndloccr.get_model_dir())"
 
 ```python
 # コメントを外す
-NDLOCR_MODEL_DIR = PROJECT_ROOT / "models" / "ndlocr"
+NDLOCR_MODEL_DIR = PROJECT_ROOT / "models" / "ndloccr"
 if NDLOCR_MODEL_DIR.exists():
-    datas.append((str(NDLOCR_MODEL_DIR), "models/ndlocr"))
+    datas.append((str(NDLOCR_MODEL_DIR), "models/ndloccr"))
 ```
 
 ---
@@ -130,7 +148,7 @@ if NDLOCR_MODEL_DIR.exists():
 1. `C:\Tools\ocr_shinseisho\ocr_shinseisho.exe` をダブルクリック
 2. アプリが起動したら「設定」→「OCR エンジン確認」を選択
 3. 以下のいずれかが表示されることを確認:
-   - `ndlocr が有効` — 高精度 OCR が使用可能
+   - `ndlocr-lite が有効` — 高精度 OCR が使用可能
    - `Tesseract が有効` — 標準 OCR が使用可能
 4. テスト用のサンプル PDF を読み込み、OCR が動作することを確認
 
@@ -148,7 +166,7 @@ if NDLOCR_MODEL_DIR.exists():
 
 ### OCR が「未対応エンジン」と表示される
 
-ndlocr も Tesseract も認識されていない場合、モックエンジンで動作します。
+ndlocr-lite も Tesseract も認識されていない場合、モックエンジンで動作します。
 モックエンジンでは実際の文字認識は行われません（テスト用のダミー結果が返ります）。
 
 手順 2 または手順 3 に従い、OCR エンジンを配置してください。
@@ -172,8 +190,8 @@ rem → C:\Program Files\Tesseract-OCR\tessdata\ に配置してからビルド
 |------|------|
 | OS | Windows 10 (64 bit) / Windows 11 |
 | CPU | Intel Core i3 以上推奨 (Celeron でも動作確認済み) |
-| RAM | 4 GB 以上推奨 (ndlocr 使用時は 8 GB 推奨) |
-| ディスク | 500 MB 以上 (ndlocr モデル含む場合は 4 GB 以上) |
+| RAM | 4 GB 以上推奨 (ndlocr-lite 使用時も 4 GB で動作可) |
+| ディスク | 500 MB 以上 (ndlocr-lite モデル含む場合は 1 GB 以上) |
 | Python | 不要 (exe にバンドル済み) |
 | インターネット | 不要 |
 

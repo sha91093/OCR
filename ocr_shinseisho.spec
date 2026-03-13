@@ -10,7 +10,8 @@
 #   Python もインストールされていない。そのため:
 #     1. Python インタープリタ一式は PyInstaller が自動バンドルする
 #     2. OCR エンジン (Tesseract) のバイナリも同梱する
-#     3. ndlocr モデルは別途オフライン転送が必要 (offline_setup.md 参照)
+#     3. ndlocr-lite モデルは別途オフライン転送が必要 (docs/offline_setup.md 参照)
+#        ※ pip パッケージ名は ndloccr (ダブルc)。フル版 ndlocr とは別物。
 #
 # 使用方法 (開発用 Windows 機でビルド):
 #   1. 前提: Python 3.9+, pip install -r requirements.txt
@@ -27,8 +28,8 @@
 # ファイルサイズの目安:
 #   Python ランタイム + Pillow + PyMuPDF: 約 80〜120 MB
 #   Tesseract バイナリ + 日本語データ:     約 30〜50 MB
-#   ndlocr モデル (別途):                 約 1〜3 GB
-#   合計 (ndlocr なし):                   約 150〜200 MB
+#   ndlocr-lite モデル (別途・任意):      約 数百 MB
+#   合計 (ndlocr-lite なし):              約 150〜200 MB
 # ==============================================================================
 
 import sys
@@ -67,10 +68,11 @@ if sys.platform == "win32" and TESSERACT_EXE.exists():
         if lang_file.exists():
             datas.append((str(lang_file), "tesseract/tessdata"))
 
-# ndlocr モデルファイル (別途オフライン転送後にコメントを外す)
-# NDLOCR_MODEL_DIR = PROJECT_ROOT / "models" / "ndlocr"
+# ndlocr-lite モデルファイル (別途オフライン転送後にコメントを外す)
+# pip パッケージ名: ndloccr (ダブルc)。フル版 ndlocr とは別物。
+# NDLOCR_MODEL_DIR = PROJECT_ROOT / "models" / "ndloccr"
 # if NDLOCR_MODEL_DIR.exists():
-#     datas.append((str(NDLOCR_MODEL_DIR), "models/ndlocr"))
+#     datas.append((str(NDLOCR_MODEL_DIR), "models/ndloccr"))
 
 # ==============================================================================
 # 隠しインポート
@@ -99,7 +101,7 @@ hiddenimports = [
     # "pdf2image", # pdf2image は poppler 依存のため同梱が複雑。PyMuPDF を優先。
     # OCR エンジン
     "pytesseract", # Tesseract Python ラッパー
-    # "ndloccr",   # ndlocr はオフライン転送後に有効化
+    # "ndloccr",   # ndlocr-lite はオフライン転送後に有効化 (pip: ndloccr)
     # 画像処理
     # "cv2",       # OpenCV (インストール済みの場合)
 ]
@@ -112,7 +114,7 @@ excludes = [
     "pytest", "setuptools", "pip", "_pytest",
     # 不使用の標準ライブラリ
     "unittest", "pdb", "doctest", "distutils",
-    # 不使用の科学計算ライブラリ (ndlocr が使う場合は除外しないこと)
+    # 不使用の科学計算ライブラリ (ndlocr-lite が依存する場合は除外しないこと)
     "matplotlib", "pandas", "scipy",
     # ネットワーク関連 (LGWAN 環境ではネット接続不可)
     "urllib3", "requests", "http.server",

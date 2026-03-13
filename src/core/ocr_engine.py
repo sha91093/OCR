@@ -5,13 +5,18 @@ ocr_engine.py - OCRエンジン管理モジュール
 作成日: 2026-03-13
 
 OCRエンジンの初期化・テキスト認識を担う。
-ndlocr-lite (ndloccr) が利用可能な場合はそれを使用し、
+ndlocr-lite (pip パッケージ名: ndloccr) が利用可能な場合はそれを使用し、
 利用できない場合は pytesseract → 簡易モック の順でフォールバックする。
 
+【ndlocr-lite と ndlocr の違い】
+    ndlocr-lite : pip install ndloccr でインストール。モデルが小さく低スペックPC向け。
+    ndlocr      : フル版。高精度だがモデルが大きく RAM・ディスク要求が高い。
+    → 本ツールは必ず ndlocr-lite (ndloccr) を使用すること。
+
 フォールバック戦略:
-    1. ndloccr  : 国立国会図書館OCR。日本語精度が最も高い。
-    2. pytesseract: Tesseract OSSラッパー。要 tesseract バイナリインストール。
-    3. MockEngine : テスト用ダミー実装。実認識は行わないが動作確認に使える。
+    1. ndloccr (ndlocr-lite) : 国立国会図書館OCR軽量版。日本語精度が最も高い。
+    2. pytesseract            : Tesseract OSSラッパー。要 tesseract バイナリインストール。
+    3. MockEngine             : テスト用ダミー実装。実認識は行わないが動作確認に使える。
 """
 
 from __future__ import annotations
@@ -30,14 +35,15 @@ _NDLOCR_AVAILABLE = False
 _TESSERACT_AVAILABLE = False
 
 try:
-    # ndloccr パッケージの存在確認
+    # ndlocr-lite のパッケージ存在確認
+    # pip パッケージ名は ndloccr (ダブルc)。フル版 ndlocr とは別物。
     # 実際の API は ndloccr のバージョンによって異なる場合があるため
     # インポートの成否だけで判定し、詳細は _NdlocrEngine 内で処理する
     import ndloccr  # type: ignore[import]
     _NDLOCR_AVAILABLE = True
-    logger.info("ndloccrパッケージが利用可能です")
+    logger.info("ndlocr-lite (ndloccr) パッケージが利用可能です")
 except ImportError:
-    logger.info("ndloccrパッケージが見つかりません。次のエンジンを試みます")
+    logger.info("ndlocr-lite (ndloccr) パッケージが見つかりません。次のエンジンを試みます")
 
 try:
     import pytesseract  # type: ignore[import]
@@ -56,18 +62,20 @@ except Exception:
 
 class _NdlocrEngine:
     """
-    ndloccr を使った OCR エンジン実装。
+    ndlocr-lite (pip: ndloccr) を使った OCR エンジン実装。
 
-    ndloccr は日本語文書専用に調整されており、
+    ndlocr-lite は日本語文書専用に調整された軽量版 OCR エンジンであり、
     縦書き・旧字体を含む申請書類に高い認識精度を発揮する。
+    低スペックPC向けにモデルサイズが抑えられている点が特徴。
     """
 
     def __init__(self) -> None:
-        """ndloccr エンジンを初期化する。"""
+        """ndlocr-lite エンジンを初期化する。"""
         import ndloccr  # type: ignore[import]
-        # ndloccr のモデルロード。初回はモデルファイルのダウンロードが発生する場合がある
+        # ndloccr のモデルロード。LGWAN環境では事前オフライン配置が必要。
+        # 手順: docs/offline_setup.md の「手順 3」を参照。
         self._engine = ndloccr
-        logger.info("ndloccrエンジンを初期化しました")
+        logger.info("ndlocr-lite (ndloccr) エンジンを初期化しました")
 
     def recognize(self, image: Any, region: Optional[tuple[int, int, int, int]] = None) -> dict[str, Any]:
         """
@@ -101,9 +109,9 @@ class _NdlocrEngine:
                 text, confidence = result[0], float(result[1])
             else:
                 text = str(result)
-                confidence = 0.9  # ndloccr が信頼度を返さない場合のデフォルト値
+                confidence = 0.9  # ndlocr-lite が信頼度を返さない場合のデフォルト値
         except Exception as exc:
-            logger.error(f"ndloccrの認識処理でエラーが発生しました: {exc}")
+            logger.error(f"ndlocr-lite の認識処理でエラーが発生しました: {exc}")
             text, confidence = "", 0.0
 
         return {"text": text.strip(), "confidence": confidence}
@@ -212,9 +220,9 @@ class OCREngine:
     統一されたインターフェースで文字認識機能を提供する。
 
     利用優先順位:
-        1. ndloccr  (最高精度・日本語特化)
-        2. pytesseract (汎用・要 Tesseract インストール)
-        3. MockEngine  (テスト用フォールバック)
+        1. ndloccr = ndlocr-lite  (最高精度・日本語特化・低スペックPC向け軽量版)
+        2. pytesseract            (汎用・要 Tesseract インストール)
+        3. MockEngine             (テスト用フォールバック)
 
     Example:
         >>> engine = OCREngine()
@@ -232,10 +240,10 @@ class OCREngine:
             try:
                 self._engine = _NdlocrEngine()
                 self._engine_name = "ndloccr"
-                logger.info("OCRエンジン: ndloccr を使用します")
+                logger.info("OCRエンジン: ndlocr-lite (ndloccr) を使用します")
                 return
             except Exception as exc:
-                logger.warning(f"ndloccrの初期化に失敗しました: {exc}")
+                logger.warning(f"ndlocr-lite の初期化に失敗しました: {exc}")
 
         if _TESSERACT_AVAILABLE:
             try:

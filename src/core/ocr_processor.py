@@ -86,7 +86,7 @@ class OCRProcessor:
         else:
             logger.warning(
                 "実際のOCRエンジンが利用できません。モックエンジンで動作します。"
-                "ndloccrまたはtesseractをインストールしてください。"
+                "ndlocr-lite (pip: ndloccr) または Tesseract をインストールしてください。"
             )
 
     # -------------------------------------------------------------------------
