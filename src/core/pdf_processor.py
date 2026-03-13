@@ -78,6 +78,11 @@ class PDFProcessor:
                 "pip install pdf2image でインストールしてください。"
             )
 
+    @staticmethod
+    def is_pdf_supported() -> bool:
+        """pdf2image が利用可能かどうかを返す。"""
+        return _PDF2IMAGE_AVAILABLE
+
     def pdf_to_images(self, pdf_path: str | Path) -> list[Any]:
         """
         PDF ファイルの全ページを PIL.Image のリストに変換する。
