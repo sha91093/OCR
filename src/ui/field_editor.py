@@ -75,6 +75,11 @@ MAX_CANVAS_H = 650
 # OCR処理時と異なる場合は ocr_processor.py 内で座標変換が行われる。
 PREVIEW_DPI = 150
 
+# ページ画像キャッシュの上限 (ページ数)
+# 低スペックPC対応: 1ページあたり約 5〜15 MB (150 DPI A4) を想定。
+# 10ページ上限 ≒ 最大 150 MB 程度。
+PAGE_CACHE_MAX = 10
+
 # 矩形の描画色
 RECT_COLOR_NORMAL   = "#2196F3"   # 通常の領域（青）
 RECT_COLOR_SELECTED = "#F44336"   # 選択中の領域（赤）
@@ -152,7 +157,10 @@ class FieldEditorDialog(tk.Toplevel):
         self._scale_ratio: float = 1.0
         self._current_page: int = 1
         self._page_count: int = 1
-        self._page_images: dict[int, object] = {}  # page -> PIL.Image
+        # ページ画像キャッシュ (OrderedDict で LRU 管理)
+        # PAGE_CACHE_MAX を超えた場合は最も古いページを自動解放してメモリを節約する。
+        from collections import OrderedDict
+        self._page_images: OrderedDict[int, object] = OrderedDict()
         self._pdf_doc = None  # PyMuPDFドキュメント
 
         # 領域データ
@@ -474,6 +482,8 @@ class FieldEditorDialog(tk.Toplevel):
             PIL.Image または None
         """
         if page_num in self._page_images:
+            # LRU: 参照されたページを末尾（最近使用）に移動
+            self._page_images.move_to_end(page_num)
             return self._page_images[page_num]
 
         if self._pdf_doc is not None and _PYMUPDF_AVAILABLE:
@@ -486,6 +496,10 @@ class FieldEditorDialog(tk.Toplevel):
             pix = page.get_pixmap(matrix=mat, alpha=False)
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             self._page_images[page_num] = img
+            # キャッシュ上限チェック: 古いページ（先頭）を解放してメモリを節約
+            while len(self._page_images) > PAGE_CACHE_MAX:
+                evicted_page, _ = self._page_images.popitem(last=False)
+                logger.debug(f"ページキャッシュを解放しました: page={evicted_page}")
             return img
 
         return None

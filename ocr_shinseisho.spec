@@ -1,52 +1,79 @@
 # -*- mode: python ; coding: utf-8 -*-
 # ==============================================================================
-# ocr_shinseisho.spec - PyInstaller パッケージング設定
+# ocr_shinseisho.spec - PyInstaller パッケージング設定 (LGWAN 対応版)
 #
-# 担当: 中村 美希 (Miki Nakamura)
-# 作成日: 2026-03-13
+# 担当: 渡辺 健二 (Kenji Watanabe)
+# 更新日: 2026-03-13
 #
-# 使用方法:
-#   pip install pyinstaller
-#   pyinstaller ocr_shinseisho.spec
+# 【LGWAN 環境向け重要事項】
+#   本ツールの配備先はインターネット非接続の LGWAN 接続 PC であり、
+#   Python もインストールされていない。そのため:
+#     1. Python インタープリタ一式は PyInstaller が自動バンドルする
+#     2. OCR エンジン (Tesseract) のバイナリも同梱する
+#     3. ndlocr モデルは別途オフライン転送が必要 (offline_setup.md 参照)
 #
-# 出力ディレクトリ: dist/ocr_shinseisho/
-# 実行ファイル:      dist/ocr_shinseisho/ocr_shinseisho.exe (Windows)
-#                   dist/ocr_shinseisho/ocr_shinseisho     (Linux/macOS)
+# 使用方法 (開発用 Windows 機でビルド):
+#   1. 前提: Python 3.9+, pip install -r requirements.txt
+#             pip install pyinstaller
+#   2. Tesseract for Windows をインストール済みにする
+#      (デフォルト: C:\Program Files\Tesseract-OCR\)
+#   3. このスクリプトの TESSERACT_DIR を環境に合わせて修正する
+#   4. build_windows.bat を実行
 #
-# ビルド前の注意:
-#   - Windows 環境でビルドすること (.exe 生成のため)
-#   - 仮想環境を使用し、不要なパッケージをインストールしないこと
-#     (バンドルサイズの最小化)
-#   - ndloccrモデルファイルがある場合は datas に追加すること
+# 出力:
+#   dist/ocr_shinseisho/           ← フォルダごとコピーして配備
+#   dist/ocr_shinseisho/ocr_shinseisho.exe
 #
-# 低スペックPC対応:
-#   - onedir モード (onefile より起動が速い。展開不要のため)
-#   - UPX圧縮を有効化してファイルサイズを削減
-#   - 不要なライブラリを excludes で除外
+# ファイルサイズの目安:
+#   Python ランタイム + Pillow + PyMuPDF: 約 80〜120 MB
+#   Tesseract バイナリ + 日本語データ:     約 30〜50 MB
+#   ndlocr モデル (別途):                 約 1〜3 GB
+#   合計 (ndlocr なし):                   約 150〜200 MB
 # ==============================================================================
 
 import sys
+import os
 from pathlib import Path
 
 # プロジェクトルート
 PROJECT_ROOT = Path(SPEC).parent  # noqa: F821  (PyInstaller が定義する変数)
 
 # ==============================================================================
+# Tesseract バイナリパスの設定 (Windows)
+# 環境によって変更すること。
+# ==============================================================================
+TESSERACT_DIR = Path(r"C:\Program Files\Tesseract-OCR")
+TESSERACT_EXE = TESSERACT_DIR / "tesseract.exe"
+TESSDATA_DIR  = TESSERACT_DIR / "tessdata"
+
+# ==============================================================================
 # 同梱するデータファイル
 # ==============================================================================
-# タプル形式: (ソースパス, バンドル内の配置先ディレクトリ)
 datas = [
-    # 設定ディレクトリ
+    # アプリ設定ディレクトリ
     (str(PROJECT_ROOT / "config"), "config"),
-    # ドキュメント (任意)
-    # (str(PROJECT_ROOT / "docs"), "docs"),
-    # ndloccrモデルファイル (インストール済みの場合はコメントを外す)
-    # ("path/to/ndlocr_models", "ndlocr_models"),
 ]
+
+# Tesseract バイナリが存在する場合は同梱 (Windows ビルド時)
+if sys.platform == "win32" and TESSERACT_EXE.exists():
+    # tesseract.exe 本体
+    datas.append((str(TESSERACT_EXE), "tesseract"))
+    # 依存 DLL 一式 (tesseract フォルダ内の .dll をすべて)
+    for dll in TESSERACT_DIR.glob("*.dll"):
+        datas.append((str(dll), "tesseract"))
+    # 言語データ (jpn + jpn_vert + eng の 3 点セット)
+    for lang in ("jpn.traineddata", "jpn_vert.traineddata", "eng.traineddata"):
+        lang_file = TESSDATA_DIR / lang
+        if lang_file.exists():
+            datas.append((str(lang_file), "tesseract/tessdata"))
+
+# ndlocr モデルファイル (別途オフライン転送後にコメントを外す)
+# NDLOCR_MODEL_DIR = PROJECT_ROOT / "models" / "ndlocr"
+# if NDLOCR_MODEL_DIR.exists():
+#     datas.append((str(NDLOCR_MODEL_DIR), "models/ndlocr"))
 
 # ==============================================================================
 # 隠しインポート
-# PyInstaller が自動検出できない動的インポートを明示的に列挙する
 # ==============================================================================
 hiddenimports = [
     # 標準ライブラリ
@@ -58,49 +85,49 @@ hiddenimports = [
     "tkinter.simpledialog",
     "tkinter.scrolledtext",
     "logging.handlers",
+    "collections",
+    "collections.abc",
     # PIL (Pillow)
     "PIL",
     "PIL.Image",
     "PIL.ImageTk",
     "PIL.ImageEnhance",
     "PIL.ImageFilter",
-    # OCR エンジン (インストールされている場合のみ)
-    # "ndloccr",
-    # "pytesseract",
-    # PDF 処理
-    # "pdf2image",
-    # "fitz",  # PyMuPDF
-    # 画像処理 (インストールされている場合)
-    # "cv2",
+    "PIL.ImageOps",
+    # PDF 処理 (インストール済みの場合)
+    "fitz",        # PyMuPDF
+    # "pdf2image", # pdf2image は poppler 依存のため同梱が複雑。PyMuPDF を優先。
+    # OCR エンジン
+    "pytesseract", # Tesseract Python ラッパー
+    # "ndloccr",   # ndlocr はオフライン転送後に有効化
+    # 画像処理
+    # "cv2",       # OpenCV (インストール済みの場合)
 ]
 
 # ==============================================================================
-# 除外するモジュール (バンドルサイズ削減)
+# 除外するモジュール
 # ==============================================================================
 excludes = [
-    # 開発ツール
-    "pytest",
-    "setuptools",
-    "pip",
+    # 開発・テストツール
+    "pytest", "setuptools", "pip", "_pytest",
     # 不使用の標準ライブラリ
-    "unittest",
-    "pdb",
-    "doctest",
-    # 不使用の科学計算ライブラリ
-    "numpy",
-    "scipy",
-    "matplotlib",
-    "pandas",
-    # ネットワーク関連 (オフライン動作のため)
-    "urllib3",
-    "requests",
+    "unittest", "pdb", "doctest", "distutils",
+    # 不使用の科学計算ライブラリ (ndlocr が使う場合は除外しないこと)
+    "matplotlib", "pandas", "scipy",
+    # ネットワーク関連 (LGWAN 環境ではネット接続不可)
+    "urllib3", "requests", "http.server",
     # Jupyter 関連
-    "IPython",
-    "jupyter",
+    "IPython", "jupyter", "notebook",
 ]
 
 # ==============================================================================
-# Analysis: 依存関係の解析
+# ランタイムフック: Tesseract のパスを環境変数に設定
+# ==============================================================================
+# bundle 内の tesseract.exe を pytesseract に認識させるためのフック
+_runtime_hook_path = PROJECT_ROOT / "hooks" / "hook_tesseract_path.py"
+
+# ==============================================================================
+# Analysis
 # ==============================================================================
 a = Analysis(
     scripts=[str(PROJECT_ROOT / "main.py")],
@@ -108,9 +135,11 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=[],
+    hookspath=[str(PROJECT_ROOT / "hooks")],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=(
+        [str(_runtime_hook_path)] if _runtime_hook_path.exists() else []
+    ),
     excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -118,14 +147,8 @@ a = Analysis(
     noarchive=False,
 )
 
-# ==============================================================================
-# PYZ: Python ファイルのアーカイブ
-# ==============================================================================
 pyz = PYZ(a.pure, a.zipped_data, cipher=None)  # noqa: F821
 
-# ==============================================================================
-# EXE: 実行ファイルの生成
-# ==============================================================================
 exe = EXE(  # noqa: F821
     pyz,
     a.scripts,
@@ -135,28 +158,16 @@ exe = EXE(  # noqa: F821
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,           # UPX 圧縮を有効化 (要 UPX インストール)
-    console=False,      # コンソールウィンドウを非表示 (GUIアプリ)
+    upx=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # Windows アイコン (用意した場合はパスを指定)
     # icon=str(PROJECT_ROOT / "assets" / "icon.ico"),
-    version_info={
-        "version":      "0.1.0",
-        "file_version": (0, 1, 0, 0),
-        "product_name": "OCR申請書読み取りツール",
-        "company_name": "渡辺 健二",
-        "legal_copyright": "© 2026 渡辺 健二",
-    } if sys.platform == "win32" else None,
 )
 
-# ==============================================================================
-# COLLECT: 出力ディレクトリへのファイル集約
-# onedir モード: dist/ocr_shinseisho/ ディレクトリに全ファイルを配置
-# ==============================================================================
 coll = COLLECT(  # noqa: F821
     exe,
     a.binaries,
@@ -164,6 +175,11 @@ coll = COLLECT(  # noqa: F821
     a.datas,
     strip=False,
     upx=True,
-    upx_exclude=[],
+    upx_exclude=[
+        # UPX 非対応 DLL は除外 (圧縮失敗を防ぐ)
+        "vcruntime*.dll",
+        "msvcp*.dll",
+        "api-ms-win*.dll",
+    ],
     name="ocr_shinseisho",
 )
