@@ -27,6 +27,67 @@ field_editor.py - フィールド（領域）定義エディタ
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 import logging
+
+
+class _RegionInputDialog(tk.Toplevel):
+    """
+    領域のフィールド識別名と表示ラベルを1つのダイアログで入力させるカスタムダイアログ。
+
+    grab_set() 済みの親ダイアログから simpledialog.askstring() を複数回呼ぶと
+    ネストモーダルでフリーズするため、1つのダイアログに統合して問題を回避する。
+    """
+
+    def __init__(self, parent, title: str, name_init: str = "", label_init: str = ""):
+        super().__init__(parent)
+        self.title(title)
+        self.resizable(False, False)
+        self.transient(parent)
+
+        self.result_name: Optional[str] = None
+        self.result_label: Optional[str] = None
+
+        frm = ttk.Frame(self, padding=12)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frm, text="フィールド識別名（英数字）:").grid(row=0, column=0, sticky=tk.W, pady=(0, 2))
+        ttk.Label(frm, text="例: name, address, date_of_birth", foreground="gray").grid(
+            row=1, column=0, sticky=tk.W, pady=(0, 6))
+        self._name_var = tk.StringVar(value=name_init)
+        name_entry = ttk.Entry(frm, textvariable=self._name_var, width=36)
+        name_entry.grid(row=2, column=0, sticky=tk.EW, pady=(0, 10))
+
+        ttk.Label(frm, text="表示ラベル:").grid(row=3, column=0, sticky=tk.W, pady=(0, 2))
+        ttk.Label(frm, text="例: 氏名, 住所, 生年月日", foreground="gray").grid(
+            row=4, column=0, sticky=tk.W, pady=(0, 6))
+        self._label_var = tk.StringVar(value=label_init or name_init)
+        label_entry = ttk.Entry(frm, textvariable=self._label_var, width=36)
+        label_entry.grid(row=5, column=0, sticky=tk.EW, pady=(0, 12))
+
+        btn_frm = ttk.Frame(frm)
+        btn_frm.grid(row=6, column=0, sticky=tk.E)
+        ttk.Button(btn_frm, text="キャンセル", command=self._on_cancel).pack(side=tk.RIGHT, padx=(6, 0))
+        ttk.Button(btn_frm, text="OK", command=self._on_ok).pack(side=tk.RIGHT)
+
+        self.bind("<Return>", lambda e: self._on_ok())
+        self.bind("<Escape>", lambda e: self._on_cancel())
+
+        # ウィンドウを親の中央に配置
+        self.update_idletasks()
+        px = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
+        py = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 2
+        self.geometry(f"+{max(0, px)}+{max(0, py)}")
+
+        self.grab_set()
+        name_entry.focus_set()
+        self.wait_window()
+
+    def _on_ok(self):
+        self.result_name = self._name_var.get().strip()
+        self.result_label = self._label_var.get().strip()
+        self.destroy()
+
+    def _on_cancel(self):
+        self.destroy()
 import sys
 from pathlib import Path
 from typing import Optional, Callable
@@ -713,8 +774,8 @@ class FieldEditorDialog(tk.Toplevel):
         rx1, ry1 = self._canvas_to_real(x1_c, y1_c)
         rx2, ry2 = self._canvas_to_real(x2_c, y2_c)
 
-        # フィールド情報を入力させる
-        self._prompt_add_region(rx1, ry1, rx2, ry2)
+        # フィールド情報を入力させる（after で呼ぶことでマウスイベント処理が完了してから開く）
+        self.after(10, lambda: self._prompt_add_region(rx1, ry1, rx2, ry2))
 
     def _on_mouse_double_click(self, event) -> None:
         """ダブルクリック: 既存領域の名前・ラベルを編集する。"""
@@ -766,26 +827,14 @@ class FieldEditorDialog(tk.Toplevel):
         Args:
             x1, y1, x2, y2: 実座標（元画像ピクセル）
         """
-        # フィールド識別名入力
-        name = simpledialog.askstring(
-            "フィールド識別名",
-            "フィールドの識別名（英数字）を入力してください:\n例: name, address, date_of_birth",
-            parent=self,
-        )
-        if not name or not name.strip():
+        # フィールド識別名と表示ラベルをまとめて1つのダイアログで入力
+        dlg = _RegionInputDialog(self, "フィールド情報の入力")
+        name = dlg.result_name
+        label = dlg.result_label
+        if not name:
             return
-        name = name.strip()
-
-        # 表示ラベル入力
-        label = simpledialog.askstring(
-            "表示ラベル",
-            "フィールドの表示ラベルを入力してください:\n例: 氏名, 住所, 生年月日",
-            parent=self,
-            initialvalue=name,
-        )
-        if not label or not label.strip():
+        if not label:
             label = name
-        label = label.strip()
 
         # 新規領域データを追加
         region = {
@@ -943,25 +992,15 @@ class FieldEditorDialog(tk.Toplevel):
 
         region = self._regions[idx]
 
-        name = simpledialog.askstring(
-            "フィールド識別名の変更",
-            "フィールド識別名:",
-            initialvalue=region["field_name"],
-            parent=self,
+        dlg = _RegionInputDialog(
+            self, "フィールド情報の変更",
+            name_init=region["field_name"],
+            label_init=region["field_label"],
         )
-        if name is None:
+        if dlg.result_name is None:
             return
-        name = name.strip() or region["field_name"]
-
-        label = simpledialog.askstring(
-            "表示ラベルの変更",
-            "表示ラベル:",
-            initialvalue=region["field_label"],
-            parent=self,
-        )
-        if label is None:
-            return
-        label = label.strip() or region["field_label"]
+        name = dlg.result_name or region["field_name"]
+        label = dlg.result_label or region["field_label"]
 
         region["field_name"] = name
         region["field_label"] = label
