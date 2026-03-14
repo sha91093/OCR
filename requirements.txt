@@ -9,12 +9,13 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# OCRエンジン (フォールバック構成)
-# ndloccr (ndlocr-lite) はPyPI未公開のため、pytesseract を使用する。
-# コードは ndloccr → pytesseract → MockEngine の順で自動フォールバックする。
-# pytesseract を使用する場合は別途 Tesseract バイナリのインストールが必要:
-#   https://github.com/UB-Mannheim/tesseract/wiki
+# OCRエンジン
+# ndlocr-lite: 国立国会図書館が提供する軽量OCRエンジン。PyPI未公開のため
+# GitHub から直接インストールする。
+# モジュール名は "ocr", "deim", "parseq" など (import ocr として使用)。
+# コードは ndlocr-lite → pytesseract → MockEngine の順で自動フォールバックする。
 # ------------------------------------------------------------------------------
+ndlocr-lite @ git+https://github.com/ndl-lab/ndlocr-lite.git
 pytesseract>=0.3.10
 
 # ------------------------------------------------------------------------------

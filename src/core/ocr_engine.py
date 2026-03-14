@@ -5,18 +5,22 @@ ocr_engine.py - OCRエンジン管理モジュール
 作成日: 2026-03-13
 
 OCRエンジンの初期化・テキスト認識を担う。
-ndlocr-lite (pip パッケージ名: ndloccr) が利用可能な場合はそれを使用し、
+ndlocr-lite が利用可能な場合はそれを使用し、
 利用できない場合は pytesseract → 簡易モック の順でフォールバックする。
 
+【ndlocr-lite のインストール方法】
+    pip install ndlocr-lite @ git+https://github.com/ndl-lab/ndlocr-lite.git
+    インストール後のモジュール名は "ocr" (import ocr)。
+
 【ndlocr-lite と ndlocr の違い】
-    ndlocr-lite : pip install ndloccr でインストール。モデルが小さく低スペックPC向け。
+    ndlocr-lite : GitHub からインストール。モデルが小さく低スペックPC向け。
     ndlocr      : フル版。高精度だがモデルが大きく RAM・ディスク要求が高い。
-    → 本ツールは必ず ndlocr-lite (ndloccr) を使用すること。
+    → 本ツールは必ず ndlocr-lite を使用すること。
 
 フォールバック戦略:
-    1. ndloccr (ndlocr-lite) : 国立国会図書館OCR軽量版。日本語精度が最も高い。
-    2. pytesseract            : Tesseract OSSラッパー。要 tesseract バイナリインストール。
-    3. MockEngine             : テスト用ダミー実装。実認識は行わないが動作確認に使える。
+    1. ndlocr-lite (import ocr) : 国立国会図書館OCR軽量版。日本語精度が最も高い。
+    2. pytesseract               : Tesseract OSSラッパー。要 tesseract バイナリインストール。
+    3. MockEngine                : テスト用ダミー実装。実認識は行わないが動作確認に使える。
 """
 
 from __future__ import annotations
@@ -36,14 +40,13 @@ _TESSERACT_AVAILABLE = False
 
 try:
     # ndlocr-lite のパッケージ存在確認
-    # pip パッケージ名は ndloccr (ダブルc)。フル版 ndlocr とは別物。
-    # 実際の API は ndloccr のバージョンによって異なる場合があるため
-    # インポートの成否だけで判定し、詳細は _NdlocrEngine 内で処理する
-    import ndloccr  # type: ignore[import]
+    # GitHub からインストール: pip install ndlocr-lite @ git+https://github.com/ndl-lab/ndlocr-lite.git
+    # インストール後のモジュール名は "ocr" (deim, parseq 等も同梱される)
+    import ocr as _ndlocr_check  # type: ignore[import]
     _NDLOCR_AVAILABLE = True
-    logger.info("ndlocr-lite (ndloccr) パッケージが利用可能です")
+    logger.info("ndlocr-lite パッケージが利用可能です")
 except ImportError:
-    logger.info("ndlocr-lite (ndloccr) パッケージが見つかりません。次のエンジンを試みます")
+    logger.info("ndlocr-lite パッケージが見つかりません。次のエンジンを試みます")
 
 try:
     import pytesseract  # type: ignore[import]
@@ -62,24 +65,60 @@ except Exception:
 
 class _NdlocrEngine:
     """
-    ndlocr-lite (pip: ndloccr) を使った OCR エンジン実装。
+    ndlocr-lite を使った OCR エンジン実装。
 
     ndlocr-lite は日本語文書専用に調整された軽量版 OCR エンジンであり、
     縦書き・旧字体を含む申請書類に高い認識精度を発揮する。
     低スペックPC向けにモデルサイズが抑えられている点が特徴。
+
+    インストール:
+        pip install ndlocr-lite @ git+https://github.com/ndl-lab/ndlocr-lite.git
     """
 
     def __init__(self) -> None:
         """ndlocr-lite エンジンを初期化する。"""
-        import ndloccr  # type: ignore[import]
+        import argparse
+        import importlib.util
+        import os
+
+        spec = importlib.util.find_spec("ocr")
+        if spec is None:
+            raise ImportError("ndlocr-lite が見つかりません")
+        # ndlocr-lite の src/ ディレクトリ (モデル・設定ファイルの基準パス)
+        src_dir = os.path.dirname(spec.origin)
+
+        args = argparse.Namespace(
+            det_weights=os.path.join(src_dir, "model", "deim-s-1024x1024.onnx"),
+            det_classes=os.path.join(src_dir, "config", "ndl.yaml"),
+            det_score_threshold=0.2,
+            det_conf_threshold=0.25,
+            det_iou_threshold=0.2,
+            rec_weights=os.path.join(
+                src_dir, "model", "parseq-ndl-16x768-100-tiny-165epoch-tegaki2.onnx"
+            ),
+            rec_weights30=os.path.join(
+                src_dir, "model", "parseq-ndl-16x256-30-tiny-192epoch-tegaki3.onnx"
+            ),
+            rec_weights50=os.path.join(
+                src_dir, "model", "parseq-ndl-16x384-50-tiny-146epoch-tegaki2.onnx"
+            ),
+            rec_classes=os.path.join(src_dir, "config", "NDLmoji.yaml"),
+            device="cpu",
+            viz=False,
+        )
+
+        from ocr import get_detector, get_recognizer  # type: ignore[import]
         # ndloccr のモデルロード。LGWAN環境では事前オフライン配置が必要。
         # 手順: docs/offline_setup.md の「手順 3」を参照。
-        self._engine = ndloccr
-        logger.info("ndlocr-lite (ndloccr) エンジンを初期化しました")
+        self._detector = get_detector(args)
+        self._recognizer100 = get_recognizer(args=args)
+        self._recognizer30 = get_recognizer(args=args, weights_path=args.rec_weights30)
+        self._recognizer50 = get_recognizer(args=args, weights_path=args.rec_weights50)
+        logger.info("ndlocr-lite エンジンを初期化しました")
 
     def recognize(self, image: Any, region: Optional[tuple[int, int, int, int]] = None) -> dict[str, Any]:
         """
-        指定領域のテキストを ndloccr で認識する。
+        指定領域のテキストを ndlocr-lite で認識する。
 
         Args:
             image:  PIL.Image オブジェクト
@@ -88,33 +127,92 @@ class _NdlocrEngine:
         Returns:
             dict: {'text': str, 'confidence': float}
         """
-        from PIL import Image
+        import tempfile
+        import xml.etree.ElementTree as ET
 
-        # 必要に応じて領域をクロップ
+        import numpy as np
+        from ocr import (  # type: ignore[import]
+            RecogLine,
+            convert_to_xml_string3,
+            process_cascade,
+            process_detector,
+        )
+        from reading_order.xy_cut.eval import eval_xml  # type: ignore[import]
+
         target: Any = image
         if region is not None:
             x1, y1, x2, y2 = region
             target = image.crop((x1, y1, x2, y2))
 
-        # ndloccr の API を呼び出す
-        # ndloccr は numpy 配列または PIL.Image を受け付けることが多いが
-        # バージョン差異を吸収するため numpy 変換してから渡す
-        import numpy as np
-        img_array = np.array(target.convert("RGB"))
+        img = np.array(target.convert("RGB"))
+        img_h, img_w = img.shape[:2]
 
         try:
-            # ndloccr.ocr() の戻り値は文字列 or (文字列, 信頼度) のどちらかの場合がある
-            result = self._engine.ocr(img_array)
-            if isinstance(result, tuple):
-                text, confidence = result[0], float(result[1])
-            else:
-                text = str(result)
-                confidence = 0.9  # ndlocr-lite が信頼度を返さない場合のデフォルト値
+            with tempfile.TemporaryDirectory() as tmpdir:
+                detections, classeslist = process_detector(
+                    self._detector, "input.jpg", img, tmpdir, issaveimg=False
+                )
+
+            # 検出結果を ndlocr-lite 内部 XML 形式に変換
+            resultobj: list[Any] = [dict(), dict()]
+            resultobj[0][0] = []
+            for i in range(17):
+                resultobj[1][i] = []
+            for det in detections:
+                xmin, ymin, xmax, ymax = det["box"]
+                conf = det["confidence"]
+                char_count = det["pred_char_count"]
+                if det["class_index"] == 0:
+                    resultobj[0][0].append([xmin, ymin, xmax, ymax])
+                resultobj[1][det["class_index"]].append(
+                    [xmin, ymin, xmax, ymax, conf, char_count]
+                )
+
+            xmlstr = convert_to_xml_string3(img_w, img_h, "input.jpg", classeslist, resultobj)
+            xmlstr = "<OCRDATASET>" + xmlstr + "</OCRDATASET>"
+            root = ET.fromstring(xmlstr)
+            eval_xml(root, logger=None)
+
+            alllineobj: list[RecogLine] = []
+            for idx, lineobj in enumerate(root.findall(".//LINE")):
+                xmin = int(lineobj.get("X", 0))
+                ymin = int(lineobj.get("Y", 0))
+                line_w = int(lineobj.get("WIDTH", 0))
+                line_h = int(lineobj.get("HEIGHT", 0))
+                try:
+                    pred_char_cnt = float(lineobj.get("PRED_CHAR_CNT", 100.0))
+                except (TypeError, ValueError):
+                    pred_char_cnt = 100.0
+                lineimg = img[ymin:ymin + line_h, xmin:xmin + line_w, :]
+                alllineobj.append(RecogLine(lineimg, idx, pred_char_cnt))
+
+            # 行検出が 0 件の場合、検出枠全体を 1 行として扱う
+            if len(alllineobj) == 0 and len(detections) > 0:
+                for idx, det in enumerate(detections):
+                    xmin, ymin, xmax, ymax = det["box"]
+                    line_w = int(xmax - xmin)
+                    line_h = int(ymax - ymin)
+                    if line_w > 0 and line_h > 0:
+                        lineimg = img[int(ymin):int(ymax), int(xmin):int(xmax), :]
+                        alllineobj.append(RecogLine(lineimg, idx, 100.0))
+
+            if not alllineobj:
+                return {"text": "", "confidence": 0.0}
+
+            result_lines = process_cascade(
+                alllineobj,
+                self._recognizer30,
+                self._recognizer50,
+                self._recognizer100,
+                is_cascade=True,
+            )
+            text = "\n".join(result_lines)
+
         except Exception as exc:
             logger.error(f"ndlocr-lite の認識処理でエラーが発生しました: {exc}")
-            text, confidence = "", 0.0
+            text = ""
 
-        return {"text": text.strip(), "confidence": confidence}
+        return {"text": text.strip(), "confidence": 0.9 if text.strip() else 0.0}
 
 
 class _TesseractEngine:
@@ -220,9 +318,9 @@ class OCREngine:
     統一されたインターフェースで文字認識機能を提供する。
 
     利用優先順位:
-        1. ndloccr = ndlocr-lite  (最高精度・日本語特化・低スペックPC向け軽量版)
-        2. pytesseract            (汎用・要 Tesseract インストール)
-        3. MockEngine             (テスト用フォールバック)
+        1. ndlocr-lite  (最高精度・日本語特化・低スペックPC向け軽量版)
+        2. pytesseract  (汎用・要 Tesseract インストール)
+        3. MockEngine   (テスト用フォールバック)
 
     Example:
         >>> engine = OCREngine()
@@ -240,7 +338,7 @@ class OCREngine:
             try:
                 self._engine = _NdlocrEngine()
                 self._engine_name = "ndloccr"
-                logger.info("OCRエンジン: ndlocr-lite (ndloccr) を使用します")
+                logger.info("OCRエンジン: ndlocr-lite を使用します")
                 return
             except Exception as exc:
                 logger.warning(f"ndlocr-lite の初期化に失敗しました: {exc}")
