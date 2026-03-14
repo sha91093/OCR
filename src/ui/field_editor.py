@@ -983,10 +983,11 @@ class FieldEditorDialog(tk.Toplevel):
         self._selected_idx = idx
         self._draw_region(idx)
 
-        # 領域リストの選択も同期
+        # 領域リストの選択も同期（未選択の場合のみ set してループを防ぐ）
         iid = str(idx)
         if iid in self._region_tree.get_children():
-            self._region_tree.selection_set(iid)
+            if iid not in self._region_tree.selection():
+                self._region_tree.selection_set(iid)
             self._region_tree.see(iid)
 
         region = self._regions[idx]
