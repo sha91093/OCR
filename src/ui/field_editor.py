@@ -27,67 +27,6 @@ field_editor.py - フィールド（領域）定義エディタ
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 import logging
-
-
-class _RegionInputDialog(tk.Toplevel):
-    """
-    領域のフィールド識別名と表示ラベルを1つのダイアログで入力させるカスタムダイアログ。
-
-    grab_set() 済みの親ダイアログから simpledialog.askstring() を複数回呼ぶと
-    ネストモーダルでフリーズするため、1つのダイアログに統合して問題を回避する。
-    """
-
-    def __init__(self, parent, title: str, name_init: str = "", label_init: str = ""):
-        super().__init__(parent)
-        self.title(title)
-        self.resizable(False, False)
-        self.transient(parent)
-
-        self.result_name: Optional[str] = None
-        self.result_label: Optional[str] = None
-
-        frm = ttk.Frame(self, padding=12)
-        frm.pack(fill=tk.BOTH, expand=True)
-
-        ttk.Label(frm, text="フィールド識別名（英数字）:").grid(row=0, column=0, sticky=tk.W, pady=(0, 2))
-        ttk.Label(frm, text="例: name, address, date_of_birth", foreground="gray").grid(
-            row=1, column=0, sticky=tk.W, pady=(0, 6))
-        self._name_var = tk.StringVar(value=name_init)
-        name_entry = ttk.Entry(frm, textvariable=self._name_var, width=36)
-        name_entry.grid(row=2, column=0, sticky=tk.EW, pady=(0, 10))
-
-        ttk.Label(frm, text="表示ラベル:").grid(row=3, column=0, sticky=tk.W, pady=(0, 2))
-        ttk.Label(frm, text="例: 氏名, 住所, 生年月日", foreground="gray").grid(
-            row=4, column=0, sticky=tk.W, pady=(0, 6))
-        self._label_var = tk.StringVar(value=label_init or name_init)
-        label_entry = ttk.Entry(frm, textvariable=self._label_var, width=36)
-        label_entry.grid(row=5, column=0, sticky=tk.EW, pady=(0, 12))
-
-        btn_frm = ttk.Frame(frm)
-        btn_frm.grid(row=6, column=0, sticky=tk.E)
-        ttk.Button(btn_frm, text="キャンセル", command=self._on_cancel).pack(side=tk.RIGHT, padx=(6, 0))
-        ttk.Button(btn_frm, text="OK", command=self._on_ok).pack(side=tk.RIGHT)
-
-        self.bind("<Return>", lambda e: self._on_ok())
-        self.bind("<Escape>", lambda e: self._on_cancel())
-
-        # ウィンドウを親の中央に配置
-        self.update_idletasks()
-        px = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
-        py = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 2
-        self.geometry(f"+{max(0, px)}+{max(0, py)}")
-
-        self.grab_set()
-        name_entry.focus_set()
-        self.wait_window()
-
-    def _on_ok(self):
-        self.result_name = self._name_var.get().strip()
-        self.result_label = self._label_var.get().strip()
-        self.destroy()
-
-    def _on_cancel(self):
-        self.destroy()
 import sys
 from pathlib import Path
 from typing import Optional, Callable
@@ -146,6 +85,90 @@ RECT_COLOR_NORMAL   = "#2196F3"   # 通常の領域（青）
 RECT_COLOR_SELECTED = "#F44336"   # 選択中の領域（赤）
 RECT_COLOR_DRAFT    = "#4CAF50"   # ドラッグ中の新規領域（緑）
 RECT_ALPHA_WIDTH    = 2           # 矩形の線幅
+
+
+# ---------------------------------------------------------------------------
+# 領域情報入力ダイアログ（フィールド名・ラベルを1画面で入力）
+# ---------------------------------------------------------------------------
+
+class _RegionInputDialog(tk.Toplevel):
+    """
+    領域のフィールド識別名と表示ラベルを1つのダイアログで入力させるカスタムダイアログ。
+
+    FieldEditorDialog は grab_set() でモーダルになっているため、
+    その上で simpledialog.askstring() を複数回呼ぶとネストモーダルになりフリーズする。
+    本クラスは両入力を1画面に統合し、親の grab を一時解放してから自身の grab を
+    取得することで競合を回避する。
+    """
+
+    def __init__(
+        self,
+        parent: tk.Toplevel,
+        title: str,
+        name_init: str = "",
+        label_init: str = "",
+    ) -> None:
+        super().__init__(parent)
+        self.title(title)
+        self.resizable(False, False)
+        self.transient(parent)
+        self._parent = parent
+
+        self.result_name: Optional[str] = None
+        self.result_label: Optional[str] = None
+
+        frm = ttk.Frame(self, padding=12)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frm, text="フィールド識別名（英数字）:").grid(row=0, column=0, sticky=tk.W, pady=(0, 2))
+        ttk.Label(frm, text="例: name, address, date_of_birth", foreground="gray").grid(
+            row=1, column=0, sticky=tk.W, pady=(0, 6))
+        self._name_var = tk.StringVar(value=name_init)
+        name_entry = ttk.Entry(frm, textvariable=self._name_var, width=36)
+        name_entry.grid(row=2, column=0, sticky=tk.EW, pady=(0, 10))
+
+        ttk.Label(frm, text="表示ラベル:").grid(row=3, column=0, sticky=tk.W, pady=(0, 2))
+        ttk.Label(frm, text="例: 氏名, 住所, 生年月日", foreground="gray").grid(
+            row=4, column=0, sticky=tk.W, pady=(0, 6))
+        self._label_var = tk.StringVar(value=label_init or name_init)
+        label_entry = ttk.Entry(frm, textvariable=self._label_var, width=36)
+        label_entry.grid(row=5, column=0, sticky=tk.EW, pady=(0, 12))
+
+        btn_frm = ttk.Frame(frm)
+        btn_frm.grid(row=6, column=0, sticky=tk.E)
+        ttk.Button(btn_frm, text="キャンセル", command=self._on_cancel).pack(side=tk.RIGHT, padx=(6, 0))
+        ttk.Button(btn_frm, text="OK", command=self._on_ok).pack(side=tk.RIGHT)
+
+        self.bind("<Return>", lambda e: self._on_ok())
+        self.bind("<Escape>", lambda e: self._on_cancel())
+
+        # ウィンドウを親の中央に配置
+        self.update_idletasks()
+        px = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
+        py = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 2
+        self.geometry(f"+{max(0, px)}+{max(0, py)}")
+
+        # 親の grab を一時解放してから自身の grab を取得（ネストモーダル競合を回避）
+        try:
+            parent.grab_release()
+        except tk.TclError:
+            pass
+        self.grab_set()
+        name_entry.focus_set()
+        self.wait_window()
+        # ダイアログが閉じた後、親の grab を復元する
+        try:
+            parent.grab_set()
+        except tk.TclError:
+            pass
+
+    def _on_ok(self) -> None:
+        self.result_name = self._name_var.get().strip()
+        self.result_label = self._label_var.get().strip()
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.destroy()
 
 
 # ---------------------------------------------------------------------------
