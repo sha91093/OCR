@@ -407,6 +407,7 @@ class MainWindow(tk.Tk):
                 self._content_area,
                 db_manager=self.db_manager,
                 status_callback=self.set_status,
+                navigate_callback=self.show_frame,
             )
         else:
             frame = _PlaceholderFrame(self._content_area, "OCR処理")
@@ -453,8 +454,16 @@ class MainWindow(tk.Tk):
             return
 
         # フレームを前面に表示
-        self._frames[frame_key].lift()
+        frame = self._frames[frame_key]
+        frame.lift()
         self._current_frame = frame_key
+
+        # 画面切り替え時にデータを最新化する（refresh()を持つフレームのみ）
+        if hasattr(frame, "refresh"):
+            try:
+                frame.refresh()
+            except Exception as exc:
+                logger.warning(f"refresh() でエラー: {exc}")
 
         # サイドバーボタンの選択状態を更新
         for key, btn in self._nav_buttons.items():

@@ -92,6 +92,7 @@ class ResultViewFrame(ttk.Frame):
         self._selected_result: Optional[dict] = None
         self._field_entries: dict[str, tk.Entry] = {}
         self._field_result_map: dict[str, dict] = {}  # field_name -> OCR結果フィールドdict
+        self._field_labels: dict[str, str] = {}  # field_name -> field_label (日本語表示名)
 
         self._build_ui()
         self._load_forms()
@@ -308,6 +309,12 @@ class ResultViewFrame(ttk.Frame):
         if self.db_manager:
             try:
                 self._results = self.db_manager.get_ocr_results(form["id"])
+                # フィールドラベル辞書を更新（日本語表示名 field_label を取得）
+                form_fields = self.db_manager.get_form_fields(form["id"])
+                self._field_labels = {
+                    f["field_name"]: f.get("field_label", f["field_name"])
+                    for f in form_fields
+                }
             except Exception as e:
                 logger.error(f"OCR結果取得に失敗: {e}")
                 messagebox.showerror("エラー", f"OCR結果の取得に失敗しました。\n{e}", parent=self)
@@ -434,10 +441,13 @@ class ResultViewFrame(ttk.Frame):
             recognized_text = field.get("recognized_text", "")
             confidence = field.get("confidence", 0.0)
 
-            # フィールドラベル（識別名）
+            # 日本語ラベルがあればそちらを表示、なければ field_name をそのまま使う
+            display_label = self._field_labels.get(field_name, field_name)
+
+            # フィールドラベル
             ttk.Label(
                 self._fields_inner_frame,
-                text=f"{field_name}:",
+                text=f"{display_label}:",
                 anchor=tk.W,
                 width=16,
             ).grid(row=row_idx, column=0, sticky=tk.W, padx=(0, 6), pady=2)

@@ -130,11 +130,13 @@ class OCRProcessingFrame(ttk.Frame):
         parent: tk.Widget,
         db_manager=None,
         status_callback: Optional[Callable[[str], None]] = None,
+        navigate_callback: Optional[Callable[[str], None]] = None,
         **kwargs,
     ):
         super().__init__(parent, **kwargs)
         self.db_manager = db_manager
         self.status_callback = status_callback or (lambda msg: None)
+        self.navigate_callback = navigate_callback  # 画面遷移コールバック (frame_key -> None)
 
         # 内部状態
         self.is_processing: bool = False
@@ -247,6 +249,15 @@ class OCRProcessingFrame(ttk.Frame):
             state=tk.DISABLED,
         )
         self._stop_btn.pack(side=tk.LEFT, padx=(0, 8))
+
+        self._goto_result_btn = ttk.Button(
+            exec_row,
+            text="結果確認へ →",
+            command=self._on_goto_result,
+            width=14,
+            state=tk.DISABLED,
+        )
+        self._goto_result_btn.pack(side=tk.RIGHT, padx=(8, 0))
 
         self._progress_var = tk.DoubleVar(value=0.0)
         self._progress_bar = ttk.Progressbar(
@@ -555,6 +566,7 @@ class OCRProcessingFrame(ttk.Frame):
         self._run_btn.configure(state=tk.DISABLED)
         self._stop_btn.configure(state=tk.NORMAL)
         self._csv_btn.configure(state=tk.DISABLED)
+        self._goto_result_btn.configure(state=tk.DISABLED)
         self._progress_var.set(0.0)
 
         self._append_log(
@@ -833,10 +845,16 @@ class OCRProcessingFrame(ttk.Frame):
         self._append_log(summary, "success" if msg.error_count == 0 else "warning")
         self.status_callback(summary)
 
-        # CSV出力ボタンを有効化（結果がある場合）
+        # CSV出力ボタンと結果確認ボタンを有効化（結果がある場合）
         if self._result_ids:
             self._csv_btn.configure(state=tk.NORMAL)
             self._csv_status_var.set(f"{len(self._result_ids)}件の結果が出力可能です")
+            self._goto_result_btn.configure(state=tk.NORMAL)
+
+    def _on_goto_result(self) -> None:
+        """「結果確認へ →」ボタン: 結果確認画面に遷移する。"""
+        if self.navigate_callback:
+            self.navigate_callback("result_view")
 
     # -----------------------------------------------------------------------
     # CSV出力
