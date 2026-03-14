@@ -165,9 +165,6 @@ def launch_gui(db_manager: "DatabaseManager", debug: bool = False) -> None:
 
     logger.info("GUIを起動します")
 
-    # Tkinter ルートウィンドウを作成
-    root = tk.Tk()
-
     # DPI スケーリング対応 (Windows 高DPIディスプレイで文字が小さくなる問題を回避)
     try:
         # Windows 環境でのDPI認識を有効化
@@ -177,13 +174,13 @@ def launch_gui(db_manager: "DatabaseManager", debug: bool = False) -> None:
         # Windows以外の環境ではスキップ
         pass
 
-    # メインウィンドウの初期化
-    app = MainWindow(root, db_manager=db_manager, debug=debug)
+    # メインウィンドウの初期化 (MainWindow が tk.Tk を継承しているため root は不要)
+    app = MainWindow(db_manager=db_manager, debug=debug)
 
     logger.info("GUIの初期化が完了しました。イベントループを開始します")
 
     # Tkinter メインイベントループ開始（ここでブロックする）
-    root.mainloop()
+    app.mainloop()
 
     logger.info("アプリケーションが正常終了しました")
 
