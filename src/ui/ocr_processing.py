@@ -99,6 +99,12 @@ class _ErrorMsg:
         self.error = error
 
 
+# テンプレート登録時(field_editor.py)の PREVIEW_DPI と合わせる必要がある。
+# field_editor.py: PREVIEW_DPI = 150 → PyMuPDF scale = 150/72
+# OCR処理でも同じDPIで描画することで座標系を一致させる。
+_TEMPLATE_DPI = 150  # field_editor.py の PREVIEW_DPI と同値にすること
+
+
 # ---------------------------------------------------------------------------
 # OCR処理フレーム
 # ---------------------------------------------------------------------------
@@ -678,7 +684,9 @@ class OCRProcessingFrame(ttk.Frame):
             doc = fitz.open(str(file_path))
             for page_num in range(len(doc)):
                 page = doc[page_num]
-                mat = fitz.Matrix(1.5, 1.5)  # 144 DPI相当
+                # _TEMPLATE_DPI と同じスケールでレンダリングして座標系を一致させる
+                _scale = _TEMPLATE_DPI / 72.0
+                mat = fitz.Matrix(_scale, _scale)
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 page_images[page_num + 1] = img
@@ -709,11 +717,14 @@ class OCRProcessingFrame(ttk.Frame):
 
             # OCR処理
             if self._ocr_engine is not None:
+                # template_dpi と OCR描画DPI が異なる場合は座標をスケール変換する
+                template_dpi = field.get("template_dpi", _TEMPLATE_DPI)
+                coord_scale = _TEMPLATE_DPI / template_dpi if template_dpi > 0 else 1.0
                 region = (
-                    int(field.get("x1", 0)),
-                    int(field.get("y1", 0)),
-                    int(field.get("x2", 0)),
-                    int(field.get("y2", 0)),
+                    int(field.get("x1", 0) * coord_scale),
+                    int(field.get("y1", 0) * coord_scale),
+                    int(field.get("x2", 0) * coord_scale),
+                    int(field.get("y2", 0) * coord_scale),
                 )
                 ocr_result = self._ocr_engine.recognize_text(img, region=region)
                 recognized_text = ocr_result.get("text", "")
