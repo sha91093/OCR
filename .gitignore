@@ -21,6 +21,7 @@ htmlcov/
 
 # アプリデータ
 ~/.ocr_shinseisho/
+*.db
 
 # IDE
 .vscode/
