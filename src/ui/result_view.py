@@ -90,7 +90,7 @@ class ResultViewFrame(ttk.Frame):
         self._forms: list[dict] = []
         self._results: list[dict] = []
         self._selected_result: Optional[dict] = None
-        self._field_entries: dict[str, tk.Entry] = {}
+        self._field_entries: dict[str, tk.Text] = {}
         self._field_result_map: dict[str, dict] = {}  # field_name -> OCR結果フィールドdict
         self._field_labels: dict[str, str] = {}  # field_name -> field_label (日本語表示名)
 
@@ -382,7 +382,10 @@ class ResultViewFrame(ttk.Frame):
         self._result_tree.tag_configure("error",   foreground="#c0392b")
 
         count = len(self._results)
-        self._result_count_var.set(f"{count} 件")
+        if count == 0:
+            self._result_count_var.set("0 件（OCR処理を実行してください）")
+        else:
+            self._result_count_var.set(f"{count} 件")
 
     def _clear_detail_panel(self) -> None:
         """詳細パネルをクリアする。"""
@@ -438,8 +441,9 @@ class ResultViewFrame(ttk.Frame):
 
         for row_idx, field in enumerate(fields):
             field_name = field.get("field_name", "")
-            recognized_text = field.get("recognized_text", "")
-            confidence = field.get("confidence", 0.0)
+            # DB の recognized_text が NULL の場合 None になるので空文字に正規化
+            recognized_text = field.get("recognized_text") or ""
+            confidence = field.get("confidence", 0.0) or 0.0
 
             # 日本語ラベルがあればそちらを表示、なければ field_name をそのまま使う
             display_label = self._field_labels.get(field_name, field_name)
@@ -448,18 +452,24 @@ class ResultViewFrame(ttk.Frame):
             ttk.Label(
                 self._fields_inner_frame,
                 text=f"{display_label}:",
-                anchor=tk.W,
+                anchor=tk.NW,
                 width=16,
-            ).grid(row=row_idx, column=0, sticky=tk.W, padx=(0, 6), pady=2)
+            ).grid(row=row_idx, column=0, sticky=tk.NW, padx=(0, 6), pady=2)
 
-            # 認識テキスト入力欄
-            text_var = tk.StringVar(value=recognized_text)
-            entry = ttk.Entry(
+            # 認識テキスト表示欄 (tk.Text で複数行にも対応)
+            line_count = max(1, recognized_text.count("\n") + 1)
+            height = min(line_count, 4)  # 最大4行まで高さを広げる
+            text_widget = tk.Text(
                 self._fields_inner_frame,
-                textvariable=text_var,
+                height=height,
                 width=36,
+                wrap=tk.WORD,
+                font=("", 10),
+                relief=tk.SOLID,
+                borderwidth=1,
             )
-            entry.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
+            text_widget.insert("1.0", recognized_text)
+            text_widget.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
 
             # 信頼度インジケーター（色で信頼度を表示）
             conf_pct = int(confidence * 100)
@@ -477,10 +487,10 @@ class ResultViewFrame(ttk.Frame):
                 width=5,
                 anchor=tk.E,
                 font=("", 9),
-            ).grid(row=row_idx, column=2, padx=(4, 0), pady=2)
+            ).grid(row=row_idx, column=2, padx=(4, 0), pady=2, sticky=tk.N)
 
-            # Entry と フィールドデータを紐付け
-            self._field_entries[field_name] = entry
+            # Text ウィジェットをエントリ辞書に記録（保存処理で使用）
+            self._field_entries[field_name] = text_widget
             self._field_result_map[field_name] = field
 
     # -----------------------------------------------------------------------
@@ -562,10 +572,10 @@ class ResultViewFrame(ttk.Frame):
             messagebox.showinfo("確認", "修正する結果を選択してください。", parent=self)
             return
 
-        # Entryウィジェットから最新の値を取得
+        # Textウィジェットから最新の値を取得 (末尾の自動改行を除去)
         has_changes = False
         for field_name, entry in self._field_entries.items():
-            new_text = entry.get()
+            new_text = entry.get("1.0", "end-1c")
             field_data = self._field_result_map.get(field_name)
             if field_data is None:
                 continue

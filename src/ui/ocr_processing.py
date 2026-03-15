@@ -770,13 +770,12 @@ class OCRProcessingFrame(ttk.Frame):
             # デモモード: ダミーID
             self._result_ids.append(len(self._result_ids) + 1)
 
-        log_lines = []
         for fr in field_results:
-            log_lines.append(
-                f"  {fr['field_name']}: '{fr['recognized_text'][:30]}' "
-                f"(conf: {fr['confidence']:.2f})"
+            text_preview = fr['recognized_text'].replace('\n', ' ')[:40]
+            logger.info(
+                f"[{file_path.name}] {fr['field_name']}: "
+                f"{text_preview!r} (conf: {fr['confidence']:.2f})"
             )
-        logger.debug("フィールド認識結果:\n" + "\n".join(log_lines))
 
         return result_id
 
